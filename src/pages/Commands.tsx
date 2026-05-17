@@ -53,15 +53,45 @@ export default function Commands() {
     setExecuting(command)
     setLastError(null)
     try {
-      // Chama o Edge Function que fala com a API real da Stellantis
-      const { data, error } = await supabase.functions.invoke('vehicle-command', {
+      // Phase 1: inicia auth no servidor (Gigya → JWT → Cognito)
+      let { data, error } = await supabase.functions.invoke('vehicle-command', {
         body: { command },
       })
+
+      // Phase 2: servidor não consegue chamar AWS direto (restrição de rede);
+      // browser faz GetCredentialsForIdentity e reenviar com as credenciais
+      if (!error && data?.needs_aws_creds) {
+        try {
+          const { uid, identityId, token, region } = data
+          const awsRes = await fetch(`https://cognito-identity.${region}.amazonaws.com/`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-amz-json-1.1',
+              'X-Amz-Target': 'AmazonCognitoIdentity.GetCredentialsForIdentity',
+            },
+            body: JSON.stringify({
+              IdentityId: identityId,
+              Logins: { 'cognito-identity.amazonaws.com': token },
+            }),
+          })
+          const awsData = await awsRes.json()
+          if (!awsData?.Credentials?.AccessKeyId)
+            throw new Error('AWS creds: ' + JSON.stringify(awsData))
+          const { AccessKeyId: accessKeyId, SecretKey: secretKey, SessionToken: sessionToken } = awsData.Credentials
+          const res2 = await supabase.functions.invoke('vehicle-command', {
+            body: { command, uid, accessKeyId, secretKey, sessionToken },
+          })
+          data = res2.data
+          error = res2.error
+        } catch (awsErr) {
+          data = { success: false, error: awsErr instanceof Error ? awsErr.message : String(awsErr) }
+          error = null
+        }
+      }
 
       if (error || !data?.success) {
         const msg = data?.error ?? error?.message ?? 'Erro desconhecido'
         setLastError(msg)
-        // Registra falha no log
         await db.from('commands_log').insert({ vehicle_id: vehicle.id, command, status: 'failed' })
         return
       }

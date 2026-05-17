@@ -168,52 +168,25 @@ async function cognitoExchange(idToken: string) {
 
 async function getAWSCreds(identityId: string, token: string): Promise<AWSCreds> {
   const region = identityId.split(':')[0] || AWS_REGION
+  const url = `https://cognito-identity.${region}.amazonaws.com/`
   const body = JSON.stringify({
     IdentityId: identityId,
     Logins: { 'cognito-identity.amazonaws.com': token },
   })
-
-  // Try 1: path-based routing (bypass X-Amz-Target header issues)
-  const urlPath = `https://cognito-identity.${region}.amazonaws.com/GetCredentialsForIdentity`
-  console.log(`getAWSCreds attempt1: POST ${urlPath}`)
-  const res1 = await fetch(urlPath, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-amz-json-1.1' },
-    body,
-  })
-  const text1 = await res1.text()
-  console.log(`getAWSCreds attempt1: HTTP ${res1.status} → ${text1.slice(0, 150)}`)
-  let data1: Record<string, unknown> | null = null
-  try { data1 = JSON.parse(text1) } catch { /* not JSON */ }
-  if (data1?.Credentials) {
-    return {
-      accessKeyId: data1.Credentials.AccessKeyId as string,
-      secretAccessKey: data1.Credentials.SecretKey as string,
-      sessionToken: data1.Credentials.SessionToken as string,
-    }
-  }
-
-  // Try 2: standard JSON-RPC with X-Amz-Target
-  const urlRoot = `https://cognito-identity.${region}.amazonaws.com/`
-  console.log(`getAWSCreds attempt2: POST ${urlRoot} with X-Amz-Target`)
-  const res2 = await fetch(urlRoot, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-amz-json-1.1',
       'X-Amz-Target': 'AmazonCognitoIdentity.GetCredentialsForIdentity',
-      'Accept': 'application/json',
     },
     body,
   })
-  const text2 = await res2.text()
-  console.log(`getAWSCreds attempt2: HTTP ${res2.status} → ${text2.slice(0, 150)}`)
-  let data2: Record<string, unknown>
-  try { data2 = JSON.parse(text2) } catch { throw new Error(`AWS creds A1:${text1.slice(0,100)} A2:${text2.slice(0, 100)}`) }
-  if (!data2.Credentials) throw new Error(`AWS creds A1:${JSON.stringify(data1)} A2:${JSON.stringify(data2)}`)
+  const data = await res.json()
+  if (!data?.Credentials?.AccessKeyId) throw new Error(`AWS creds blocked: ${JSON.stringify(data).slice(0, 100)}`)
   return {
-    accessKeyId: data2.Credentials.AccessKeyId as string,
-    secretAccessKey: data2.Credentials.SecretKey as string,
-    sessionToken: data2.Credentials.SessionToken as string,
+    accessKeyId: data.Credentials.AccessKeyId as string,
+    secretAccessKey: data.Credentials.SecretKey as string,
+    sessionToken: data.Credentials.SessionToken as string,
   }
 }
 
@@ -262,13 +235,38 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS })
 
   try {
-    const { command } = await req.json() as { command: string }
+    const body = await req.json() as {
+      command: string
+      uid?: string
+      accessKeyId?: string
+      secretKey?: string
+      sessionToken?: string
+    }
+    const { command } = body
 
-    const username = Deno.env.get('FCA_USERNAME') ?? ''
-    const password = Deno.env.get('FCA_PASSWORD') ?? ''
     const pin = Deno.env.get('FCA_PIN') ?? ''
     const vin = Deno.env.get('VEHICLE_VIN') ?? ''
 
+    // Phase 2: browser fetched AWS creds, use them directly
+    if (body.uid && body.accessKeyId && body.secretKey && body.sessionToken) {
+      if (!pin || !vin) throw new Error('Secrets não configurados: FCA_PIN, VEHICLE_VIN')
+      const creds: AWSCreds = {
+        accessKeyId: body.accessKeyId,
+        secretAccessKey: body.secretKey,
+        sessionToken: body.sessionToken,
+      }
+      const pinToken = await pinAuth(body.uid, pin, creds)
+      console.log(`Enviando ${command} (${COMMAND_MAP[command]}) para VIN ${vin}`)
+      await sendVehicleCommand(body.uid, vin, command, pinToken, creds)
+      return new Response(
+        JSON.stringify({ success: true, command, fca_command: COMMAND_MAP[command] }),
+        { headers: { ...CORS, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    // Phase 1: full auth flow
+    const username = Deno.env.get('FCA_USERNAME') ?? ''
+    const password = Deno.env.get('FCA_PASSWORD') ?? ''
     if (!username || !password || !pin || !vin)
       throw new Error('Secrets não configurados: FCA_USERNAME, FCA_PASSWORD, FCA_PIN, VEHICLE_VIN')
 
@@ -276,16 +274,30 @@ Deno.serve(async (req) => {
     const { loginToken, uid } = await gigyaLogin(username, password)
     const idToken = await getJWT(loginToken)
     const { identityId, token, credentials } = await cognitoExchange(idToken)
-    const creds = credentials ?? await getAWSCreds(identityId, token)
-    const pinToken = await pinAuth(uid, pin, creds)
+    const region = identityId.split(':')[0] || AWS_REGION
 
-    console.log(`Enviando ${command} (${COMMAND_MAP[command]}) para VIN ${vin}`)
-    await sendVehicleCommand(uid, vin, command, pinToken, creds)
+    const runCommand = async (creds: AWSCreds) => {
+      const pinToken = await pinAuth(uid, pin, creds)
+      console.log(`Enviando ${command} (${COMMAND_MAP[command]}) para VIN ${vin}`)
+      await sendVehicleCommand(uid, vin, command, pinToken, creds)
+      return new Response(
+        JSON.stringify({ success: true, command, fca_command: COMMAND_MAP[command] }),
+        { headers: { ...CORS, 'Content-Type': 'application/json' } },
+      )
+    }
 
-    return new Response(
-      JSON.stringify({ success: true, command, fca_command: COMMAND_MAP[command] }),
-      { headers: { ...CORS, 'Content-Type': 'application/json' } },
-    )
+    if (credentials) return await runCommand(credentials)
+
+    try {
+      return await runCommand(await getAWSCreds(identityId, token))
+    } catch {
+      // AWS blocked server-side; delegate GetCredentialsForIdentity to browser
+      console.log('AWS creds blocked server-side, delegating to client browser')
+      return new Response(
+        JSON.stringify({ needs_aws_creds: true, uid, identityId, token, region }),
+        { headers: { ...CORS, 'Content-Type': 'application/json' } },
+      )
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('Erro:', message)
