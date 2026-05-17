@@ -153,23 +153,30 @@ async function cognitoExchange(idToken: string) {
 }
 
 async function getAWSCreds(identityId: string, token: string): Promise<AWSCreds> {
-  const res = await fetch(`https://cognito-identity.${AWS_REGION}.amazonaws.com`, {
+  const region = identityId.split(':')[0] || AWS_REGION
+  const url = `https://cognito-identity.${region}.amazonaws.com/`
+  const body = JSON.stringify({
+    IdentityId: identityId,
+    Logins: { 'cognito-identity.amazonaws.com': token },
+  })
+  console.log(`getAWSCreds: region=${region} identityId=${identityId.slice(0, 24)}...`)
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-amz-json-1.1',
       'X-Amz-Target': 'AmazonCognitoIdentity.GetCredentialsForIdentity',
     },
-    body: JSON.stringify({
-      IdentityId: identityId,
-      Logins: { 'cognito-identity.amazonaws.com': token },
-    }),
+    body,
   })
-  const data = await res.json()
-  if (!data.Credentials) throw new Error(`AWS creds falhou: ${JSON.stringify(data)}`)
+  const text = await res.text()
+  console.log(`getAWSCreds: HTTP ${res.status} → ${text.slice(0, 120)}`)
+  let data: Record<string, unknown>
+  try { data = JSON.parse(text) } catch { throw new Error(`AWS creds HTTP ${res.status}: ${text.slice(0, 200)}`) }
+  if (!data.Credentials) throw new Error(`AWS creds HTTP ${res.status}: ${JSON.stringify(data)}`)
   return {
-    accessKeyId: data.Credentials.AccessKeyId,
-    secretAccessKey: data.Credentials.SecretKey,
-    sessionToken: data.Credentials.SessionToken,
+    accessKeyId: data.Credentials.AccessKeyId as string,
+    secretAccessKey: data.Credentials.SecretKey as string,
+    sessionToken: data.Credentials.SessionToken as string,
   }
 }
 
