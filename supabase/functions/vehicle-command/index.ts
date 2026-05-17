@@ -9,14 +9,15 @@
 //   FCA_PIN       = PIN de 4 dígitos configurado no app
 //   VEHICLE_VIN   = número de chassi do veículo (17 caracteres)
 
-const GIGYA_API_KEY = '3_mOx_J2dRgjXYCdyhchv3b5lhi54eBcdCTX4BI8MORqmZCoQWhA0mV2PTlptLGUQI'
+// RAM US/LATAM portal (used for RAM trucks in Americas including Brazil)
+const GIGYA_API_KEY = '3_7YjzjoSb7dYtCP5-D6FhPsCciggJFvM14hNPvXN9OsIiV1ujDqa4fNltDJYnHawO'
 const COGNITO_API_KEY = 'qLYupk65UU1tw2Ih1cJhs4izijgRDbir2UFHA3Je'
 const MFA_API_KEY = 'JWRYW7IYhW9v0RqDghQSx4UcRYRILNmc8zAuh5ys'
 
-const GIGYA_BASE = 'https://loginmyuconnect.fiat.com'
-const AUTHZ_BASE = 'https://authz.sdpr-01.fcagcv.com'
-const CHANNELS_BASE = 'https://channels.sdpr-01.fcagcv.com'
-const MFA_BASE = 'https://mfa.fcl-01.fcagcv.com'
+const GIGYA_BASE = 'https://login-us.ramtrucks.com'
+const AUTHZ_BASE = 'https://authz.sdpr-02.fcagcv.com'
+const CHANNELS_BASE = 'https://channels.sdpr-02.fcagcv.com'
+const MFA_BASE = 'https://mfa.fcl-02.fcagcv.com'
 const AWS_REGION = 'us-east-1'
 
 // Mapa de comandos do app → código da API FCA
