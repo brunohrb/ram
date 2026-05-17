@@ -114,9 +114,10 @@ async function gigyaLogin(username: string, password: string) {
     body: body.toString(),
   })
   const data = await res.json()
-  if (!data.sessionInfo?.login_token)
+  const loginToken = data.sessionInfo?.login_token ?? data.sessionInfo?.cookieValue
+  if (!loginToken)
     throw new Error(`Gigya login falhou: ${data.errorMessage ?? JSON.stringify(data)}`)
-  return { loginToken: data.sessionInfo.login_token as string, uid: data.UID as string }
+  return { loginToken: loginToken as string, uid: data.UID as string }
 }
 
 async function getJWT(loginToken: string) {
