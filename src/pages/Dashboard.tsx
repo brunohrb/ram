@@ -70,6 +70,7 @@ export default function Dashboard({ onNavigate }: Props) {
   const [status, setStatus] = useState<VehicleStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [carImgOk, setCarImgOk] = useState(true)
 
   const load = async () => {
     const { data: v } = await db.from('vehicles').select('*').limit(1).single()
@@ -100,106 +101,128 @@ export default function Dashboard({ onNavigate }: Props) {
   )
 
   return (
-    <div className="px-4 pt-4 pb-2 space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-gray-500 text-xs font-semibold uppercase tracking-widest">Ram Connect</p>
-          <h1 className="text-2xl font-bold text-white mt-0.5">{vehicle.name}</h1>
+    <div className="pb-2 space-y-4">
+
+      {/* ── Hero: foto do carro ── */}
+      <div className="relative overflow-hidden" style={{ background: '#f0f0f0', minHeight: 200 }}>
+        {carImgOk && (
+          <img
+            src="/ram/car.png"
+            alt={vehicle.name}
+            className="w-full object-contain"
+            style={{ maxHeight: 220 }}
+            onError={() => setCarImgOk(false)}
+          />
+        )}
+        {/* Gradiente que funde a foto com o fundo escuro */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'linear-gradient(to bottom, rgba(240,240,240,0) 30%, #0d0d0d 100%)',
+          }}
+        />
+        {/* Info do veículo sobre o gradiente */}
+        <div className="absolute bottom-3 left-4 right-12">
+          <p className="text-gray-400 text-xs font-semibold uppercase tracking-widest">Ram Connect</p>
+          <h1 className="text-2xl font-bold text-white leading-tight">{vehicle.name}</h1>
           <p className="text-gray-400 text-sm">{vehicle.model} · {vehicle.year}</p>
           {vehicle.plate && (
-            <p className="text-gray-600 text-xs font-mono mt-0.5">{vehicle.plate}</p>
+            <p className="text-gray-500 text-xs font-mono mt-0.5">{vehicle.plate}</p>
           )}
         </div>
+        {/* Botão refresh */}
         <button
           onClick={refresh}
-          className="mt-1 p-2.5 rounded-xl bg-[#1a1a1a] border border-[#2a2a2a] active:scale-90 transition-transform"
+          className="absolute bottom-3 right-4 p-2.5 rounded-xl bg-black/40 backdrop-blur-sm active:scale-90 transition-transform"
         >
-          <RefreshCw size={15} className={`text-gray-400 ${refreshing ? 'animate-spin' : ''}`} />
+          <RefreshCw size={15} className={`text-white ${refreshing ? 'animate-spin' : ''}`} />
         </button>
       </div>
 
-      {/* Fuel gauge */}
-      <div className="bg-[#1a1a1a] rounded-2xl border border-[#2a2a2a] flex justify-center py-2">
-        <FuelGauge level={status.fuel_level} />
-      </div>
-
-      {/* Door / Engine status */}
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          onClick={() => onNavigate('commands')}
-          className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-colors active:scale-95 ${
-            status.doors_locked
-              ? 'bg-green-950/50 border-green-800/60'
-              : 'bg-yellow-950/50 border-yellow-700/60'
-          }`}
-        >
-          {status.doors_locked
-            ? <Lock size={20} className="text-green-400 shrink-0" />
-            : <Unlock size={20} className="text-yellow-400 shrink-0" />
-          }
-          <div className="text-left min-w-0">
-            <p className="text-gray-400 text-xs">Portas</p>
-            <p className={`text-sm font-semibold truncate ${status.doors_locked ? 'text-green-400' : 'text-yellow-400'}`}>
-              {status.doors_locked ? 'Travadas' : 'Abertas'}
-            </p>
-          </div>
-        </button>
-
-        <button
-          onClick={() => onNavigate('commands')}
-          className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-colors active:scale-95 ${
-            status.engine_running
-              ? 'bg-red-950/50 border-red-800/60 pulse-red'
-              : 'bg-[#1a1a1a] border-[#2a2a2a]'
-          }`}
-        >
-          <Power
-            size={20}
-            className={`shrink-0 ${status.engine_running ? 'text-red-400' : 'text-gray-500'}`}
-          />
-          <div className="text-left min-w-0">
-            <p className="text-gray-400 text-xs">Motor</p>
-            <p className={`text-sm font-semibold truncate ${status.engine_running ? 'text-red-400' : 'text-gray-400'}`}>
-              {status.engine_running ? 'Ligado' : 'Desligado'}
-            </p>
-          </div>
-        </button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-[#2a2a2a]">
-          <p className="text-gray-500 text-xs mb-1">Odômetro</p>
-          <p className="text-white text-xl font-bold">{Number(status.mileage).toLocaleString('pt-BR')}</p>
-          <p className="text-gray-600 text-xs mt-0.5">km</p>
+      <div className="px-4 space-y-4">
+        {/* Fuel gauge */}
+        <div className="bg-[#1a1a1a] rounded-2xl border border-[#2a2a2a] flex justify-center py-2">
+          <FuelGauge level={status.fuel_level} />
         </div>
-        <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-[#2a2a2a]">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Battery
-              size={12}
-              className={Number(status.battery_voltage) >= 12 ? 'text-green-400' : 'text-yellow-400'}
+
+        {/* Door / Engine status */}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => onNavigate('commands')}
+            className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-colors active:scale-95 ${
+              status.doors_locked
+                ? 'bg-green-950/50 border-green-800/60'
+                : 'bg-yellow-950/50 border-yellow-700/60'
+            }`}
+          >
+            {status.doors_locked
+              ? <Lock size={20} className="text-green-400 shrink-0" />
+              : <Unlock size={20} className="text-yellow-400 shrink-0" />
+            }
+            <div className="text-left min-w-0">
+              <p className="text-gray-400 text-xs">Portas</p>
+              <p className={`text-sm font-semibold truncate ${status.doors_locked ? 'text-green-400' : 'text-yellow-400'}`}>
+                {status.doors_locked ? 'Travadas' : 'Abertas'}
+              </p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => onNavigate('commands')}
+            className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-colors active:scale-95 ${
+              status.engine_running
+                ? 'bg-red-950/50 border-red-800/60 pulse-red'
+                : 'bg-[#1a1a1a] border-[#2a2a2a]'
+            }`}
+          >
+            <Power
+              size={20}
+              className={`shrink-0 ${status.engine_running ? 'text-red-400' : 'text-gray-500'}`}
             />
-            <p className="text-gray-500 text-xs">Bateria</p>
-          </div>
-          <p className="text-white text-xl font-bold">{Number(status.battery_voltage).toFixed(1)}</p>
-          <p className="text-gray-600 text-xs mt-0.5">volts</p>
+            <div className="text-left min-w-0">
+              <p className="text-gray-400 text-xs">Motor</p>
+              <p className={`text-sm font-semibold truncate ${status.engine_running ? 'text-red-400' : 'text-gray-400'}`}>
+                {status.engine_running ? 'Ligado' : 'Desligado'}
+              </p>
+            </div>
+          </button>
         </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-[#2a2a2a]">
+            <p className="text-gray-500 text-xs mb-1">Odômetro</p>
+            <p className="text-white text-xl font-bold">{Number(status.mileage).toLocaleString('pt-BR')}</p>
+            <p className="text-gray-600 text-xs mt-0.5">km</p>
+          </div>
+          <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-[#2a2a2a]">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Battery
+                size={12}
+                className={Number(status.battery_voltage) >= 12 ? 'text-green-400' : 'text-yellow-400'}
+              />
+              <p className="text-gray-500 text-xs">Bateria</p>
+            </div>
+            <p className="text-white text-xl font-bold">{Number(status.battery_voltage).toFixed(1)}</p>
+            <p className="text-gray-600 text-xs mt-0.5">volts</p>
+          </div>
+        </div>
+
+        {/* Tire pressures */}
+        <TirePressures
+          fl={status.tire_pressure_fl}
+          fr={status.tire_pressure_fr}
+          rl={status.tire_pressure_rl}
+          rr={status.tire_pressure_rr}
+        />
+
+        <p className="text-center text-gray-700 text-xs pb-1">
+          Atualizado em {new Date(status.updated_at).toLocaleString('pt-BR', {
+            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+          })}
+        </p>
       </div>
-
-      {/* Tire pressures */}
-      <TirePressures
-        fl={status.tire_pressure_fl}
-        fr={status.tire_pressure_fr}
-        rl={status.tire_pressure_rl}
-        rr={status.tire_pressure_rr}
-      />
-
-      <p className="text-center text-gray-700 text-xs pb-1">
-        Atualizado em {new Date(status.updated_at).toLocaleString('pt-BR', {
-          day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-        })}
-      </p>
     </div>
   )
 }

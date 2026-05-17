@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { db } from '../lib/supabase'
+import supabase from '../lib/supabase'
 import type { Vehicle, VehicleStatus, CommandLog } from '../types'
-import { Lock, Unlock, Power, Volume2, Lightbulb, Loader2 } from 'lucide-react'
+import { Lock, Unlock, Power, Volume2, Lightbulb, Loader2, WifiOff } from 'lucide-react'
 
 const CMD_LABELS: Record<string, string> = {
   LOCK: 'Travou as portas',
@@ -19,6 +20,7 @@ export default function Commands() {
   const [loading, setLoading] = useState(true)
   const [executing, setExecuting] = useState<string | null>(null)
   const [confirmStart, setConfirmStart] = useState(false)
+  const [lastError, setLastError] = useState<string | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -38,10 +40,34 @@ export default function Commands() {
     load().finally(() => setLoading(false))
   }, [])
 
-  const run = async (command: string, updates?: Partial<VehicleStatus>) => {
+  // Mapeamento otimista: o que atualizar no estado local se o comando funcionar
+  const OPTIMISTIC: Record<string, Partial<VehicleStatus>> = {
+    LOCK: { doors_locked: true },
+    UNLOCK: { doors_locked: false },
+    START: { engine_running: true },
+    STOP: { engine_running: false },
+  }
+
+  const run = async (command: string) => {
     if (!vehicle || !status || executing) return
     setExecuting(command)
+    setLastError(null)
     try {
+      // Chama o Edge Function que fala com a API real da Stellantis
+      const { data, error } = await supabase.functions.invoke('vehicle-command', {
+        body: { command },
+      })
+
+      if (error || !data?.success) {
+        const msg = data?.error ?? error?.message ?? 'Erro desconhecido'
+        setLastError(msg)
+        // Registra falha no log
+        await db.from('commands_log').insert({ vehicle_id: vehicle.id, command, status: 'failed' })
+        return
+      }
+
+      // Atualiza estado local otimisticamente
+      const updates = OPTIMISTIC[command]
       if (updates) {
         await db
           .from('vehicle_status')
@@ -49,6 +75,8 @@ export default function Commands() {
           .eq('vehicle_id', vehicle.id)
         setStatus(prev => prev ? { ...prev, ...updates } : prev)
       }
+
+      // Registra sucesso no log
       const { data: log } = await db
         .from('commands_log')
         .insert({ vehicle_id: vehicle.id, command, status: 'success' })
@@ -102,6 +130,18 @@ export default function Commands() {
         <p className="text-gray-400 text-sm">{vehicle.model}</p>
       </div>
 
+      {/* Erro do Edge Function */}
+      {lastError && (
+        <div className="flex items-start gap-3 bg-red-950/50 border border-red-800/60 rounded-2xl p-3">
+          <WifiOff size={16} className="text-red-400 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-red-400 text-xs font-semibold">Comando não enviado</p>
+            <p className="text-gray-400 text-xs mt-0.5 break-words">{lastError}</p>
+          </div>
+          <button onClick={() => setLastError(null)} className="text-gray-600 text-xs">✕</button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         {/* Lock */}
         {btn(
@@ -111,7 +151,7 @@ export default function Commands() {
           status.doors_locked ? 'TRAVADO' : 'ABERTO',
           status.doors_locked,
           'bg-green-950/50 border-green-700/60',
-          () => run('LOCK', { doors_locked: true }),
+          () => run('LOCK'),
           status.doors_locked,
         )}
 
@@ -123,7 +163,7 @@ export default function Commands() {
           !status.doors_locked ? 'ABERTO' : 'TRAVADO',
           !status.doors_locked,
           'bg-yellow-950/50 border-yellow-700/60',
-          () => run('UNLOCK', { doors_locked: false }),
+          () => run('UNLOCK'),
           !status.doors_locked,
         )}
 
@@ -140,7 +180,7 @@ export default function Commands() {
                 Cancelar
               </button>
               <button
-                onClick={() => run('START', { engine_running: true })}
+                onClick={() => run('START')}
                 className="flex-1 py-2.5 rounded-xl bg-ram text-white text-sm font-bold active:opacity-80"
               >
                 {executing === 'START'
@@ -159,7 +199,7 @@ export default function Commands() {
             status.engine_running,
             'bg-red-950/50 border-red-700/60 pulse-red',
             () => {
-              if (status.engine_running) run('STOP', { engine_running: false })
+              if (status.engine_running) run('STOP')
               else setConfirmStart(true)
             },
           )
