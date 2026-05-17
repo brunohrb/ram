@@ -114,27 +114,18 @@ export default function Dashboard({ onNavigate }: Props) {
             onError={() => setCarImgOk(false)}
           />
         )}
-        {/* Gradiente que funde a foto com o fundo escuro */}
+        {/* Gradiente suave nas bordas */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
-              'linear-gradient(to bottom, rgba(17,17,17,0.1) 0%, rgba(17,17,17,0) 40%, rgba(13,13,13,0.7) 75%, #0d0d0d 100%)',
+              'linear-gradient(to bottom, rgba(17,17,17,0.3) 0%, rgba(17,17,17,0) 30%, rgba(13,13,13,0.5) 90%, #0d0d0d 100%)',
           }}
         />
-        {/* Info do veículo sobre o gradiente */}
-        <div className="absolute bottom-3 left-4 right-12">
-          <p className="text-gray-400 text-xs font-semibold uppercase tracking-widest">Ram Connect</p>
-          <h1 className="text-2xl font-bold text-white leading-tight">{vehicle.name}</h1>
-          <p className="text-gray-400 text-sm">{vehicle.model} · {vehicle.year}</p>
-          {vehicle.plate && (
-            <p className="text-gray-500 text-xs font-mono mt-0.5">{vehicle.plate}</p>
-          )}
-        </div>
         {/* Botão refresh */}
         <button
           onClick={refresh}
-          className="absolute bottom-3 right-4 p-2.5 rounded-xl bg-black/40 backdrop-blur-sm active:scale-90 transition-transform"
+          className="absolute top-3 right-3 p-2.5 rounded-xl bg-black/40 backdrop-blur-sm active:scale-90 transition-transform"
         >
           <RefreshCw size={15} className={`text-white ${refreshing ? 'animate-spin' : ''}`} />
         </button>
@@ -217,11 +208,20 @@ export default function Dashboard({ onNavigate }: Props) {
           rr={status.tire_pressure_rr}
         />
 
-        <p className="text-center text-gray-700 text-xs pb-1">
-          Atualizado em {new Date(status.updated_at).toLocaleString('pt-BR', {
-            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-          })}
-        </p>
+        {/* Info do veículo */}
+        <div className="bg-[#1a1a1a] rounded-2xl border border-[#2a2a2a] px-4 py-3">
+          <p className="text-gray-500 text-xs font-semibold uppercase tracking-widest mb-1">Ram Connect</p>
+          <p className="text-white text-base font-bold leading-tight">{vehicle.name}</p>
+          <p className="text-gray-400 text-sm">{vehicle.model} · {vehicle.year}</p>
+          {vehicle.plate && (
+            <p className="text-gray-500 text-xs font-mono mt-0.5">{vehicle.plate}</p>
+          )}
+          <p className="text-gray-700 text-xs mt-2">
+            Atualizado em {new Date(status.updated_at).toLocaleString('pt-BR', {
+              day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+            })}
+          </p>
+        </div>
       </div>
     </div>
   )
