@@ -153,7 +153,7 @@ async function cognitoExchange(idToken: string) {
 }
 
 async function getAWSCreds(identityId: string, token: string): Promise<AWSCreds> {
-  const res = await fetch(`https://cognito-identity.${AWS_REGION}.amazonaws.com/`, {
+  const res = await fetch(`https://cognito-identity.${AWS_REGION}.amazonaws.com`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-amz-json-1.1',
