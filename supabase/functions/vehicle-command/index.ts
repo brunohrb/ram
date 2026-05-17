@@ -140,6 +140,9 @@ async function cognitoExchange(idToken: string) {
       'X-Api-Key': COGNITO_API_KEY,
       'clientrequestid': reqId(),
       'x-clientapp-name': 'CWP',
+      'x-clientapp-version': '1.0',
+      'x-originator-type': 'web',
+      'locale': 'en_us',
     },
     body: JSON.stringify({ gigya_token: idToken }),
   })
