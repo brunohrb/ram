@@ -148,8 +148,22 @@ async function cognitoExchange(idToken: string) {
     body: JSON.stringify({ gigya_token: idToken }),
   })
   const data = await res.json()
+  console.log(`cognitoExchange keys: ${Object.keys(data).join(', ')}`)
   if (!data.IdentityId) throw new Error(`Cognito exchange falhou: ${JSON.stringify(data)}`)
-  return { identityId: data.IdentityId as string, token: data.Token as string }
+  // If FCA already returns AWS credentials in the exchange, return them directly
+  if (data.Credentials?.AccessKeyId) {
+    console.log('cognitoExchange: credentials included in response')
+    return {
+      identityId: data.IdentityId as string,
+      token: data.Token as string,
+      credentials: {
+        accessKeyId: data.Credentials.AccessKeyId as string,
+        secretAccessKey: data.Credentials.SecretKey as string,
+        sessionToken: data.Credentials.SessionToken as string,
+      },
+    }
+  }
+  return { identityId: data.IdentityId as string, token: data.Token as string, credentials: undefined }
 }
 
 async function getAWSCreds(identityId: string, token: string): Promise<AWSCreds> {
@@ -238,8 +252,8 @@ Deno.serve(async (req) => {
     console.log(`Autenticando para comando: ${command}`)
     const { loginToken, uid } = await gigyaLogin(username, password)
     const idToken = await getJWT(loginToken)
-    const { identityId, token } = await cognitoExchange(idToken)
-    const creds = await getAWSCreds(identityId, token)
+    const { identityId, token, credentials } = await cognitoExchange(idToken)
+    const creds = credentials ?? await getAWSCreds(identityId, token)
     const pinToken = await pinAuth(uid, pin, creds)
 
     console.log(`Enviando ${command} (${COMMAND_MAP[command]}) para VIN ${vin}`)
