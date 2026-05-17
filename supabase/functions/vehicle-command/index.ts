@@ -168,83 +168,81 @@ async function cognitoExchange(idToken: string) {
 
 async function getAWSCreds(identityId: string, token: string): Promise<AWSCreds> {
   const region = identityId.split(':')[0] || AWS_REGION
-  const url = `https://cognito-identity.${region}.amazonaws.com/`
   const body = JSON.stringify({
     IdentityId: identityId,
     Logins: { 'cognito-identity.amazonaws.com': token },
   })
-  console.log(`getAWSCreds: region=${region} identityId=${identityId.slice(0, 24)}...`)
-  const res = await fetch(url, {
+
+  // Try 1: path-based routing (bypass X-Amz-Target header issues)
+  const urlPath = `https://cognito-identity.${region}.amazonaws.com/GetCredentialsForIdentity`
+  console.log(`getAWSCreds attempt1: POST ${urlPath}`)
+  const res1 = await fetch(urlPath, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-amz-json-1.1' },
+    body,
+  })
+  const text1 = await res1.text()
+  console.log(`getAWSCreds attempt1: HTTP ${res1.status} → ${text1.slice(0, 150)}`)
+  let data1: Record<string, unknown> | null = null
+  try { data1 = JSON.parse(text1) } catch { /* not JSON */ }
+  if (data1?.Credentials) {
+    return {
+      accessKeyId: data1.Credentials.AccessKeyId as string,
+      secretAccessKey: data1.Credentials.SecretKey as string,
+      sessionToken: data1.Credentials.SessionToken as string,
+    }
+  }
+
+  // Try 2: standard JSON-RPC with X-Amz-Target
+  const urlRoot = `https://cognito-identity.${region}.amazonaws.com/`
+  console.log(`getAWSCreds attempt2: POST ${urlRoot} with X-Amz-Target`)
+  const res2 = await fetch(urlRoot, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-amz-json-1.1',
       'X-Amz-Target': 'AmazonCognitoIdentity.GetCredentialsForIdentity',
+      'Accept': 'application/json',
     },
     body,
   })
-  const text = await res.text()
-  console.log(`getAWSCreds: HTTP ${res.status} → ${text.slice(0, 120)}`)
-  let data: Record<string, unknown>
-  try { data = JSON.parse(text) } catch { throw new Error(`AWS creds HTTP ${res.status}: ${text.slice(0, 200)}`) }
-  if (!data.Credentials) throw new Error(`AWS creds HTTP ${res.status}: ${JSON.stringify(data)}`)
+  const text2 = await res2.text()
+  console.log(`getAWSCreds attempt2: HTTP ${res2.status} → ${text2.slice(0, 150)}`)
+  let data2: Record<string, unknown>
+  try { data2 = JSON.parse(text2) } catch { throw new Error(`AWS creds A1:${text1.slice(0,100)} A2:${text2.slice(0, 100)}`) }
+  if (!data2.Credentials) throw new Error(`AWS creds A1:${JSON.stringify(data1)} A2:${JSON.stringify(data2)}`)
   return {
-    accessKeyId: data.Credentials.AccessKeyId as string,
-    secretAccessKey: data.Credentials.SecretKey as string,
-    sessionToken: data.Credentials.SessionToken as string,
+    accessKeyId: data2.Credentials.AccessKeyId as string,
+    secretAccessKey: data2.Credentials.SecretKey as string,
+    sessionToken: data2.Credentials.SessionToken as string,
   }
 }
 
-async function pinAuth(uid: string, pin: string, token: string, creds: AWSCreds | null): Promise<string> {
+async function pinAuth(uid: string, pin: string, creds: AWSCreds): Promise<string> {
   const url = `${MFA_BASE}/v1/accounts/${uid}/ignite/pin/authenticate`
   const body = JSON.stringify({ pin: btoa(pin) })
-
-  let headers: Record<string, string>
-  if (creds) {
-    headers = await signRequest('POST', url, body, creds, {
-      'X-Api-Key': MFA_API_KEY,
-      'clientrequestid': reqId(),
-      'x-originator-type': 'web',
-    })
-  } else {
-    headers = {
-      'Content-Type': 'application/json',
-      'X-Api-Key': MFA_API_KEY,
-      'clientrequestid': reqId(),
-      'x-originator-type': 'web',
-      'Authorization': token,
-    }
-  }
+  const headers = await signRequest('POST', url, body, creds, {
+    'X-Api-Key': MFA_API_KEY,
+    'clientrequestid': reqId(),
+    'x-originator-type': 'web',
+  })
   const res = await fetch(url, { method: 'POST', headers, body })
   const data = await res.json()
   if (!data.token) throw new Error(`PIN auth falhou: ${JSON.stringify(data)}`)
   return data.token as string
 }
 
-async function sendVehicleCommand(uid: string, vin: string, command: string, pinToken: string, token: string, creds: AWSCreds | null) {
+async function sendVehicleCommand(uid: string, vin: string, command: string, pinToken: string, creds: AWSCreds) {
   const fcaCmd = COMMAND_MAP[command]
   if (!fcaCmd) throw new Error(`Comando desconhecido: ${command}`)
 
   const url = `${CHANNELS_BASE}/v1/accounts/${uid}/vehicles/${vin}/remote`
   const body = JSON.stringify({ command: fcaCmd, pinAuth: pinToken })
-
-  let headers: Record<string, string>
-  if (creds) {
-    headers = await signRequest('POST', url, body, creds, {
-      'X-Api-Key': COGNITO_API_KEY,
-      'clientrequestid': reqId(),
-      'x-clientapp-version': '1.0',
-      'x-originator-type': 'web',
-    })
-  } else {
-    headers = {
-      'Content-Type': 'application/json',
-      'X-Api-Key': COGNITO_API_KEY,
-      'clientrequestid': reqId(),
-      'x-clientapp-version': '1.0',
-      'x-originator-type': 'web',
-      'Authorization': token,
-    }
-  }
+  const headers = await signRequest('POST', url, body, creds, {
+    'X-Api-Key': COGNITO_API_KEY,
+    'clientrequestid': reqId(),
+    'x-clientapp-version': '1.0',
+    'x-originator-type': 'web',
+  })
 
   const res = await fetch(url, { method: 'POST', headers, body })
   if (!res.ok) {
@@ -278,12 +276,11 @@ Deno.serve(async (req) => {
     const { loginToken, uid } = await gigyaLogin(username, password)
     const idToken = await getJWT(loginToken)
     const { identityId, token, credentials } = await cognitoExchange(idToken)
-    // Try without AWS credentials first (Bearer token auth); fall back to SigV4 if creds available
-    const creds = credentials ?? null
-    const pinToken = await pinAuth(uid, pin, token, creds)
+    const creds = credentials ?? await getAWSCreds(identityId, token)
+    const pinToken = await pinAuth(uid, pin, creds)
 
     console.log(`Enviando ${command} (${COMMAND_MAP[command]}) para VIN ${vin}`)
-    await sendVehicleCommand(uid, vin, command, pinToken, token, creds)
+    await sendVehicleCommand(uid, vin, command, pinToken, creds)
 
     return new Response(
       JSON.stringify({ success: true, command, fca_command: COMMAND_MAP[command] }),
