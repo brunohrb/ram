@@ -104,13 +104,13 @@ export default function Dashboard({ onNavigate }: Props) {
     <div className="pb-2 space-y-4">
 
       {/* ── Hero: foto do carro ── */}
-      <div className="relative overflow-hidden" style={{ background: '#f0f0f0', minHeight: 200 }}>
+      <div className="relative overflow-hidden" style={{ background: '#111111', minHeight: 220 }}>
         {carImgOk && (
           <img
             src="/ram/car.png"
             alt={vehicle.name}
             className="w-full object-contain"
-            style={{ maxHeight: 220 }}
+            style={{ maxHeight: 240 }}
             onError={() => setCarImgOk(false)}
           />
         )}
@@ -119,7 +119,7 @@ export default function Dashboard({ onNavigate }: Props) {
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
-              'linear-gradient(to bottom, rgba(240,240,240,0) 30%, #0d0d0d 100%)',
+              'linear-gradient(to bottom, rgba(17,17,17,0.1) 0%, rgba(17,17,17,0) 40%, rgba(13,13,13,0.7) 75%, #0d0d0d 100%)',
           }}
         />
         {/* Info do veículo sobre o gradiente */}
