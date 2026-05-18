@@ -64,16 +64,32 @@ export default function Commands() {
       if (!error && data?.needs_aws_creds) {
         try {
           const { uid, identityId, token, region } = data
-          const cognitoClient = new CognitoIdentityClient({ region })
-          const credsResp = await cognitoClient.send(new GetCredentialsForIdentityCommand({
+          // Diagnostic: show what we're sending to AWS
+          const awsUrl = `https://cognito-identity.${region}.amazonaws.com/`
+          const awsBody = JSON.stringify({
             IdentityId: identityId,
-            Logins: { 'cognito-identity.amazonaws.com': token },
-          }))
-          const c = credsResp.Credentials
-          if (!c?.AccessKeyId || !c?.SecretKey || !c?.SessionToken)
-            throw new Error('AWS SDK: credenciais incompletas')
+            Logins: { 'cognito-identity.amazonaws.com': token ? token.slice(0, 20) + '…' : 'MISSING' },
+          })
+          const awsRes = await fetch(awsUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-amz-json-1.1',
+              'X-Amz-Target': 'AmazonCognitoIdentity.GetCredentialsForIdentity',
+            },
+            body: JSON.stringify({
+              IdentityId: identityId,
+              Logins: { 'cognito-identity.amazonaws.com': token },
+            }),
+          })
+          const awsData = await awsRes.json()
+          if (!awsData?.Credentials?.AccessKeyId) {
+            throw new Error(
+              `AWS[${region}] HTTP${awsRes.status}: ${JSON.stringify(awsData)} | id:${identityId?.slice(0, 30)} | tokenOk:${!!token} | req:${awsBody}`
+            )
+          }
+          const { AccessKeyId: accessKeyId, SecretKey: secretKey, SessionToken: sessionToken } = awsData.Credentials
           const res2 = await supabase.functions.invoke('vehicle-command', {
-            body: { command, uid, accessKeyId: c.AccessKeyId, secretKey: c.SecretKey, sessionToken: c.SessionToken },
+            body: { command, uid, accessKeyId, secretKey, sessionToken },
           })
           data = res2.data
           error = res2.error
