@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity": "^3.1048.0",
     "@supabase/supabase-js": "^2.49.4",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.511.0",

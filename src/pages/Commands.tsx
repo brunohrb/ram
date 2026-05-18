@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { CognitoIdentityClient, GetCredentialsForIdentityCommand } from '@aws-sdk/client-cognito-identity'
 import { db } from '../lib/supabase'
 import supabase from '../lib/supabase'
 import type { Vehicle, VehicleStatus, CommandLog } from '../types'
@@ -63,23 +64,16 @@ export default function Commands() {
       if (!error && data?.needs_aws_creds) {
         try {
           const { uid, identityId, token, region } = data
-          const awsRes = await fetch(`https://cognito-identity.${region}.amazonaws.com/`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-amz-json-1.1',
-              'X-Amz-Target': 'AmazonCognitoIdentity.GetCredentialsForIdentity',
-            },
-            body: JSON.stringify({
-              IdentityId: identityId,
-              Logins: { 'cognito-identity.amazonaws.com': token },
-            }),
-          })
-          const awsData = await awsRes.json()
-          if (!awsData?.Credentials?.AccessKeyId)
-            throw new Error('AWS creds: ' + JSON.stringify(awsData))
-          const { AccessKeyId: accessKeyId, SecretKey: secretKey, SessionToken: sessionToken } = awsData.Credentials
+          const cognitoClient = new CognitoIdentityClient({ region })
+          const credsResp = await cognitoClient.send(new GetCredentialsForIdentityCommand({
+            IdentityId: identityId,
+            Logins: { 'cognito-identity.amazonaws.com': token },
+          }))
+          const c = credsResp.Credentials
+          if (!c?.AccessKeyId || !c?.SecretKey || !c?.SessionToken)
+            throw new Error('AWS SDK: credenciais incompletas')
           const res2 = await supabase.functions.invoke('vehicle-command', {
-            body: { command, uid, accessKeyId, secretKey, sessionToken },
+            body: { command, uid, accessKeyId: c.AccessKeyId, secretKey: c.SecretKey, sessionToken: c.SessionToken },
           })
           data = res2.data
           error = res2.error
