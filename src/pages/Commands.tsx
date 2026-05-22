@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { CognitoIdentityClient, GetCredentialsForIdentityCommand } from '@aws-sdk/client-cognito-identity'
 import { db } from '../lib/supabase'
 import supabase from '../lib/supabase'
 import type { Vehicle, VehicleStatus, CommandLog } from '../types'
