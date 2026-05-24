@@ -151,7 +151,7 @@ async function pinAuth(uid: string, pin: string, creds: AWSCreds): Promise<strin
   const url = `${MFA_BASE}/v1/accounts/${uid}/ignite/pin/authenticate`
   const body = JSON.stringify({ pin: btoa(pin) })
   const headers = await signRequest('POST', url, body, creds, {
-    'X-Api-Key': MFA_API_KEY, 'clientrequestid': reqId(), 'x-originator-type': 'web',
+    'X-Api-Key': MFA_API_KEY, 'clientrequestid': reqId(), 'x-originator-type': 'web', 'locale': 'en_us',
   })
   const res = await fetch(url, { method: 'POST', headers, body })
   const data = await res.json()
