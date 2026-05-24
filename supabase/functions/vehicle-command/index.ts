@@ -239,6 +239,49 @@ async function getAWSCreds(identityId: string, token: string, gigyaJwt: string):
   return await cognitoGetCreds(identityId, 'cognito-identity.amazonaws.com', token)
 }
 
+async function pinAuthBearer(uid: string, pin: string, bearerToken: string): Promise<string> {
+  const url = `${MFA_BASE}/v1/accounts/${uid}/ignite/pin/authenticate`
+  const body = JSON.stringify({ pin: btoa(pin) })
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${bearerToken}`,
+      'X-Api-Key': MFA_API_KEY,
+      'clientrequestid': reqId(),
+      'x-originator-type': 'web',
+    },
+    body,
+  })
+  const data = await res.json()
+  console.log(`pinAuthBearer response: ${JSON.stringify(data).slice(0, 200)}`)
+  if (!data.token) throw new Error(`PIN bearer auth falhou: ${JSON.stringify(data).slice(0, 200)}`)
+  return data.token as string
+}
+
+async function sendVehicleCommandBearer(uid: string, vin: string, command: string, pinToken: string, bearerToken: string) {
+  const fcaCmd = COMMAND_MAP[command]
+  if (!fcaCmd) throw new Error(`Comando desconhecido: ${command}`)
+  const url = `${CHANNELS_BASE}/v1/accounts/${uid}/vehicles/${vin}/remote`
+  const body = JSON.stringify({ command: fcaCmd, pinAuth: pinToken })
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${bearerToken}`,
+      'X-Api-Key': COGNITO_API_KEY,
+      'clientrequestid': reqId(),
+      'x-clientapp-version': '1.0',
+      'x-originator-type': 'web',
+    },
+    body,
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Comando bearer ${command} falhou ${res.status}: ${err}`)
+  }
+}
+
 async function pinAuth(uid: string, pin: string, creds: AWSCreds): Promise<string> {
   const url = `${MFA_BASE}/v1/accounts/${uid}/ignite/pin/authenticate`
   const body = JSON.stringify({ pin: btoa(pin) })
@@ -337,12 +380,38 @@ Deno.serve(async (req) => {
 
     if (credentials) return await runCommand(credentials)
 
+    // Try Bearer token auth (Cognito token) before falling back to SigV4 flow
+    if (token) {
+      try {
+        console.log('Trying Bearer token auth with Cognito token')
+        const pinToken = await pinAuthBearer(uid, pin, token)
+        await sendVehicleCommandBearer(uid, vin, command, pinToken, token)
+        return new Response(
+          JSON.stringify({ success: true, command, fca_command: COMMAND_MAP[command] }),
+          { headers: { ...CORS, 'Content-Type': 'application/json' } },
+        )
+      } catch (bearerErr) {
+        console.log(`Bearer token auth failed: ${bearerErr}`)
+      }
+      // Also try with Gigya JWT as Bearer
+      try {
+        console.log('Trying Bearer token auth with Gigya JWT')
+        const pinToken = await pinAuthBearer(uid, pin, idToken)
+        await sendVehicleCommandBearer(uid, vin, command, pinToken, idToken)
+        return new Response(
+          JSON.stringify({ success: true, command, fca_command: COMMAND_MAP[command] }),
+          { headers: { ...CORS, 'Content-Type': 'application/json' } },
+        )
+      } catch (gigErr) {
+        console.log(`Gigya JWT Bearer auth failed: ${gigErr}`)
+      }
+    }
+
     try {
       return await runCommand(await getAWSCreds(identityId, token, idToken))
     } catch (awsErr) {
       const awsMsg = awsErr instanceof Error ? awsErr.message : String(awsErr)
       console.log(`AWS creds failed server-side: ${awsMsg}`)
-      // Delegate to browser with both tokens so it can try different login keys
       return new Response(
         JSON.stringify({ needs_aws_creds: true, uid, identityId, token, gigyaJwt: idToken, region }),
         { headers: { ...CORS, 'Content-Type': 'application/json' } },
