@@ -169,13 +169,14 @@ async function cognitoExchange(idToken: string) {
   return { identityId: data.IdentityId as string, token: (data.Token ?? data.token ?? '') as string, credentials: undefined }
 }
 
-async function getAWSCreds(identityId: string, token: string): Promise<AWSCreds> {
+async function cognitoGetCreds(identityId: string, loginsKey: string, loginsValue: string): Promise<AWSCreds> {
   const region = identityId.split(':')[0] || AWS_REGION
   const url = `https://cognito-identity.${region}.amazonaws.com/`
   const body = JSON.stringify({
     IdentityId: identityId,
-    Logins: { 'cognito-identity.amazonaws.com': token },
+    Logins: { [loginsKey]: loginsValue },
   })
+  console.log(`GetCredentialsForIdentity: key=${loginsKey}, id=${identityId.slice(0, 30)}`)
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -185,12 +186,24 @@ async function getAWSCreds(identityId: string, token: string): Promise<AWSCreds>
     body,
   })
   const data = await res.json()
-  if (!data?.Credentials?.AccessKeyId) throw new Error(`AWS creds blocked: ${JSON.stringify(data).slice(0, 100)}`)
+  console.log(`GetCredentialsForIdentity response (key=${loginsKey}): ${JSON.stringify(data).slice(0, 200)}`)
+  if (!data?.Credentials?.AccessKeyId) throw new Error(`[${loginsKey}] ${JSON.stringify(data).slice(0, 120)}`)
   return {
     accessKeyId: data.Credentials.AccessKeyId as string,
     secretAccessKey: data.Credentials.SecretKey as string,
     sessionToken: data.Credentials.SessionToken as string,
   }
+}
+
+async function getAWSCreds(identityId: string, token: string, gigyaJwt: string): Promise<AWSCreds> {
+  // Try Enhanced Flow: Gigya as OIDC provider (most likely for FCA)
+  try {
+    return await cognitoGetCreds(identityId, 'accounts.us1.gigya.com', gigyaJwt)
+  } catch (e1) {
+    console.log(`Enhanced Flow (Gigya) failed: ${e1}`)
+  }
+  // Fallback: Basic Flow with developer-authenticated token
+  return await cognitoGetCreds(identityId, 'cognito-identity.amazonaws.com', token)
 }
 
 async function pinAuth(uid: string, pin: string, creds: AWSCreds): Promise<string> {
@@ -292,12 +305,13 @@ Deno.serve(async (req) => {
     if (credentials) return await runCommand(credentials)
 
     try {
-      return await runCommand(await getAWSCreds(identityId, token))
-    } catch {
-      // AWS blocked server-side; delegate GetCredentialsForIdentity to browser
-      console.log('AWS creds blocked server-side, delegating to client browser')
+      return await runCommand(await getAWSCreds(identityId, token, idToken))
+    } catch (awsErr) {
+      const awsMsg = awsErr instanceof Error ? awsErr.message : String(awsErr)
+      console.log(`AWS creds failed server-side: ${awsMsg}`)
+      // Delegate to browser with both tokens so it can try different login keys
       return new Response(
-        JSON.stringify({ needs_aws_creds: true, uid, identityId, token, region }),
+        JSON.stringify({ needs_aws_creds: true, uid, identityId, token, gigyaJwt: idToken, region }),
         { headers: { ...CORS, 'Content-Type': 'application/json' } },
       )
     }

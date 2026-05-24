@@ -180,33 +180,6 @@ export default function Dashboard({ onNavigate }: Props) {
           </button>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-[#2a2a2a]">
-            <p className="text-gray-500 text-xs mb-1">Odômetro</p>
-            <p className="text-white text-xl font-bold">{Number(status.mileage).toLocaleString('pt-BR')}</p>
-            <p className="text-gray-600 text-xs mt-0.5">km</p>
-          </div>
-          <div className="bg-[#1a1a1a] rounded-2xl p-4 border border-[#2a2a2a]">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Battery
-                size={12}
-                className={Number(status.battery_voltage) >= 12 ? 'text-green-400' : 'text-yellow-400'}
-              />
-              <p className="text-gray-500 text-xs">Bateria</p>
-            </div>
-            <p className="text-white text-xl font-bold">{Number(status.battery_voltage).toFixed(1)}</p>
-            <p className="text-gray-600 text-xs mt-0.5">volts</p>
-          </div>
-        </div>
-
-        {/* Tire pressures */}
-        <TirePressures
-          fl={status.tire_pressure_fl}
-          fr={status.tire_pressure_fr}
-          rl={status.tire_pressure_rl}
-          rr={status.tire_pressure_rr}
-        />
 
         {/* Info do veículo */}
         <div className="bg-[#1a1a1a] rounded-2xl border border-[#2a2a2a] px-4 py-3">

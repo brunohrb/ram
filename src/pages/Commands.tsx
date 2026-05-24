@@ -62,31 +62,39 @@ export default function Commands() {
       // browser faz GetCredentialsForIdentity e reenviar com as credenciais
       if (!error && data?.needs_aws_creds) {
         try {
-          const { uid, identityId, token, region } = data
-          // Diagnostic: show what we're sending to AWS
+          const { uid, identityId, token, gigyaJwt, region } = data
           const awsUrl = `https://cognito-identity.${region}.amazonaws.com/`
-          const awsBody = JSON.stringify({
-            IdentityId: identityId,
-            Logins: { 'cognito-identity.amazonaws.com': token ? token.slice(0, 20) + '…' : 'MISSING' },
-          })
-          const awsRes = await fetch(awsUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-amz-json-1.1',
-              'X-Amz-Target': 'AmazonCognitoIdentity.GetCredentialsForIdentity',
-            },
-            body: JSON.stringify({
-              IdentityId: identityId,
-              Logins: { 'cognito-identity.amazonaws.com': token },
-            }),
-          })
-          const awsData = await awsRes.json()
-          if (!awsData?.Credentials?.AccessKeyId) {
-            throw new Error(
-              `AWS[${region}] HTTP${awsRes.status}: ${JSON.stringify(awsData)} | id:${identityId?.slice(0, 30)} | tokenOk:${!!token} | req:${awsBody}`
-            )
+          const awsHeaders = {
+            'Content-Type': 'application/x-amz-json-1.1',
+            'X-Amz-Target': 'AmazonCognitoIdentity.GetCredentialsForIdentity',
           }
-          const { AccessKeyId: accessKeyId, SecretKey: secretKey, SessionToken: sessionToken } = awsData.Credentials
+
+          const tryGetCreds = async (loginsKey: string, loginsValue: string) => {
+            const res = await fetch(awsUrl, {
+              method: 'POST',
+              headers: awsHeaders,
+              body: JSON.stringify({ IdentityId: identityId, Logins: { [loginsKey]: loginsValue } }),
+            })
+            const d = await res.json()
+            if (!d?.Credentials?.AccessKeyId)
+              throw new Error(`[${loginsKey.split('.')[0]}] HTTP${res.status}: ${JSON.stringify(d)}`)
+            return d.Credentials as { AccessKeyId: string; SecretKey: string; SessionToken: string }
+          }
+
+          // Try Enhanced Flow (Gigya OIDC) first, then Basic Flow
+          let creds
+          const errors: string[] = []
+          for (const [key, val] of [
+            ['accounts.us1.gigya.com', gigyaJwt],
+            ['cognito-identity.amazonaws.com', token],
+          ] as [string, string][]) {
+            if (!val) continue
+            try { creds = await tryGetCreds(key, val); break }
+            catch (e) { errors.push(e instanceof Error ? e.message : String(e)) }
+          }
+
+          if (!creds) throw new Error(errors.join(' | '))
+          const { AccessKeyId: accessKeyId, SecretKey: secretKey, SessionToken: sessionToken } = creds
           const res2 = await supabase.functions.invoke('vehicle-command', {
             body: { command, uid, accessKeyId, secretKey, sessionToken },
           })
