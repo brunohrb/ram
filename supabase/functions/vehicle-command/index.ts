@@ -134,38 +134,71 @@ async function getJWT(loginToken: string) {
 }
 
 async function cognitoExchange(idToken: string) {
+  const commonHeaders = {
+    'Content-Type': 'application/json',
+    'X-Api-Key': COGNITO_API_KEY,
+    'clientrequestid': reqId(),
+    'x-clientapp-name': 'CWP',
+    'x-clientapp-version': '1.0',
+    'x-originator-type': 'web',
+    'locale': 'en_us',
+  }
+
+  // Step 1: exchange Gigya JWT for Cognito IdentityId + Token
   const res = await fetch(`${AUTHZ_BASE}/v2/cognito/identity/token`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Api-Key': COGNITO_API_KEY,
-      'clientrequestid': reqId(),
-      'x-clientapp-name': 'CWP',
-      'x-clientapp-version': '1.0',
-      'x-originator-type': 'web',
-      'locale': 'en_us',
-    },
+    headers: commonHeaders,
     body: JSON.stringify({ gigya_token: idToken }),
   })
   const data = await res.json()
   console.log(`cognitoExchange full response: ${JSON.stringify(data)}`)
   if (!data.IdentityId) throw new Error(`Cognito exchange falhou: ${JSON.stringify(data)}`)
 
-  // FCA may return credentials directly under various key shapes
-  const creds = data.Credentials ?? data.credentials ?? data.credential
-  const accessKeyId = creds?.AccessKeyId ?? creds?.accessKeyId
-  if (accessKeyId) {
-    console.log('cognitoExchange: credentials included in response')
+  // Some FCA configurations return credentials directly
+  const inlineCreds = data.Credentials ?? data.credentials ?? data.credential
+  const inlineKey = inlineCreds?.AccessKeyId ?? inlineCreds?.accessKeyId
+  if (inlineKey) {
+    console.log('cognitoExchange: credentials inline in token response')
     return {
       identityId: data.IdentityId as string,
       token: (data.Token ?? data.token ?? '') as string,
       credentials: {
-        accessKeyId: accessKeyId as string,
-        secretAccessKey: (creds.SecretKey ?? creds.secretAccessKey ?? creds.SecretAccessKey) as string,
-        sessionToken: (creds.SessionToken ?? creds.sessionToken) as string,
+        accessKeyId: inlineKey as string,
+        secretAccessKey: (inlineCreds.SecretKey ?? inlineCreds.secretAccessKey ?? inlineCreds.SecretAccessKey) as string,
+        sessionToken: (inlineCreds.SessionToken ?? inlineCreds.sessionToken) as string,
       },
     }
   }
+
+  // Step 2: try FCA's own credential-vending endpoint (avoids direct AWS call)
+  for (const path of ['/v2/cognito/identity/credentials', '/v1/cognito/identity/credentials']) {
+    try {
+      const credRes = await fetch(`${AUTHZ_BASE}${path}`, {
+        method: 'POST',
+        headers: commonHeaders,
+        body: JSON.stringify({ IdentityId: data.IdentityId, Token: data.Token }),
+      })
+      const credData = await credRes.json()
+      console.log(`FCA credentials endpoint ${path}: ${JSON.stringify(credData).slice(0, 200)}`)
+      const c = credData.Credentials ?? credData.credentials
+      const ak = c?.AccessKeyId ?? c?.accessKeyId
+      if (ak) {
+        console.log(`cognitoExchange: credentials from FCA endpoint ${path}`)
+        return {
+          identityId: data.IdentityId as string,
+          token: (data.Token ?? '') as string,
+          credentials: {
+            accessKeyId: ak as string,
+            secretAccessKey: (c.SecretKey ?? c.secretAccessKey ?? c.SecretAccessKey) as string,
+            sessionToken: (c.SessionToken ?? c.sessionToken) as string,
+          },
+        }
+      }
+    } catch (e) {
+      console.log(`FCA credentials endpoint ${path} error: ${e}`)
+    }
+  }
+
   return { identityId: data.IdentityId as string, token: (data.Token ?? data.token ?? '') as string, credentials: undefined }
 }
 
