@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { db } from '../lib/supabase'
+import supabase from '../lib/supabase'
 import type { VehicleStatus } from '../types'
 import { MapPin, Navigation, RefreshCw } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
@@ -37,6 +38,7 @@ export default function Location() {
 
   const refresh = async () => {
     setRefreshing(true)
+    try { await supabase.functions.invoke('vehicle-sync') } catch (_) { /* continua */ }
     await load()
     setRefreshing(false)
   }
