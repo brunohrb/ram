@@ -2,7 +2,7 @@
 // Usa a API Smartcar para enviar comandos remotos ao veículo.
 // Requer autorização prévia via /functions/v1/smartcar-callback
 
-const CLIENT_ID = 'client_01KRS5Y0QRREY8A7Z10M7W2RPK'
+const CLIENT_ID = 'beb69fe6-0b56-4832-b727-e014c1fdeff4'
 const CLIENT_SECRET = 'f7e5bcba501d75799acb617eca031356bf8316edaab311c7e76fb267b1dfa1b5'
 const SMARTCAR_API = 'https://api.smartcar.com/v2.0'
 
