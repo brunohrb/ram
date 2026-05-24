@@ -380,40 +380,33 @@ Deno.serve(async (req) => {
 
     if (credentials) return await runCommand(credentials)
 
-    // Try Bearer token auth (Cognito token) before falling back to SigV4 flow
+    const diag: string[] = []
+
     if (token) {
       try {
-        console.log('Trying Bearer token auth with Cognito token')
         const pinToken = await pinAuthBearer(uid, pin, token)
         await sendVehicleCommandBearer(uid, vin, command, pinToken, token)
         return new Response(
           JSON.stringify({ success: true, command, fca_command: COMMAND_MAP[command] }),
           { headers: { ...CORS, 'Content-Type': 'application/json' } },
         )
-      } catch (bearerErr) {
-        console.log(`Bearer token auth failed: ${bearerErr}`)
-      }
-      // Also try with Gigya JWT as Bearer
+      } catch (e) { diag.push(`Bearer(cognito): ${e instanceof Error ? e.message : e}`) }
       try {
-        console.log('Trying Bearer token auth with Gigya JWT')
         const pinToken = await pinAuthBearer(uid, pin, idToken)
         await sendVehicleCommandBearer(uid, vin, command, pinToken, idToken)
         return new Response(
           JSON.stringify({ success: true, command, fca_command: COMMAND_MAP[command] }),
           { headers: { ...CORS, 'Content-Type': 'application/json' } },
         )
-      } catch (gigErr) {
-        console.log(`Gigya JWT Bearer auth failed: ${gigErr}`)
-      }
+      } catch (e) { diag.push(`Bearer(gigya): ${e instanceof Error ? e.message : e}`) }
     }
 
     try {
       return await runCommand(await getAWSCreds(identityId, token, idToken))
-    } catch (awsErr) {
-      const awsMsg = awsErr instanceof Error ? awsErr.message : String(awsErr)
-      console.log(`AWS creds failed server-side: ${awsMsg}`)
+    } catch (e) {
+      diag.push(`SigV4: ${e instanceof Error ? e.message : e}`)
       return new Response(
-        JSON.stringify({ needs_aws_creds: true, uid, identityId, token, gigyaJwt: idToken, region }),
+        JSON.stringify({ needs_aws_creds: true, uid, identityId, token, gigyaJwt: idToken, region, diag }),
         { headers: { ...CORS, 'Content-Type': 'application/json' } },
       )
     }

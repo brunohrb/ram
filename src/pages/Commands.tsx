@@ -93,7 +93,10 @@ export default function Commands() {
             catch (e) { errors.push(e instanceof Error ? e.message : String(e)) }
           }
 
-          if (!creds) throw new Error(errors.join(' | '))
+          if (!creds) {
+            const serverDiag = Array.isArray(data?.diag) ? `\nSERVER: ${data.diag.join(' | ')}` : ''
+            throw new Error(errors.join(' | ') + serverDiag)
+          }
           const { AccessKeyId: accessKeyId, SecretKey: secretKey, SessionToken: sessionToken } = creds
           const res2 = await supabase.functions.invoke('vehicle-command', {
             body: { command, uid, accessKeyId, secretKey, sessionToken },
