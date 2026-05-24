@@ -202,41 +202,71 @@ async function cognitoExchange(idToken: string) {
   return { identityId: data.IdentityId as string, token: (data.Token ?? data.token ?? '') as string, credentials: undefined }
 }
 
-async function cognitoGetCreds(identityId: string, loginsKey: string, loginsValue: string): Promise<AWSCreds> {
-  const region = identityId.split(':')[0] || AWS_REGION
-  const url = `https://cognito-identity.${region}.amazonaws.com/`
-  const body = JSON.stringify({
-    IdentityId: identityId,
-    Logins: { [loginsKey]: loginsValue },
+// Force HTTP/1.1 via node:https — HTTP/2 lowercases headers which may break X-Amz-Target routing
+async function cognitoGetCredsHttp1(identityId: string, loginsKey: string, loginsValue: string): Promise<AWSCreds> {
+  // deno-lint-ignore no-explicit-any
+  const { request } = await import('node:https') as any
+  const region = identityId.trim().split(':')[0] || AWS_REGION
+  const bodyStr = JSON.stringify({ IdentityId: identityId.trim(), Logins: { [loginsKey]: loginsValue } })
+  return new Promise((resolve, reject) => {
+    const req = request({
+      hostname: `cognito-identity.${region}.amazonaws.com`,
+      path: '/',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-amz-json-1.1',
+        'X-Amz-Target': 'AmazonCognitoIdentity.GetCredentialsForIdentity',
+        'Content-Length': bodyStr.length,
+      },
+    // deno-lint-ignore no-explicit-any
+    }, (res: any) => {
+      let raw = ''
+      res.on('data', (c: Buffer) => { raw += c.toString() })
+      res.on('end', () => {
+        try {
+          const d = JSON.parse(raw)
+          if (d?.Credentials?.AccessKeyId) {
+            resolve({ accessKeyId: d.Credentials.AccessKeyId, secretAccessKey: d.Credentials.SecretKey, sessionToken: d.Credentials.SessionToken })
+          } else {
+            reject(new Error(`[h1-${loginsKey.split('.')[0]}] ${raw.slice(0, 150)}`))
+          }
+        } catch (e) { reject(e) }
+      })
+    })
+    req.on('error', reject)
+    req.write(bodyStr)
+    req.end()
   })
-  console.log(`GetCredentialsForIdentity: key=${loginsKey}, id=${identityId.slice(0, 30)}`)
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-amz-json-1.1',
-      'X-Amz-Target': 'AmazonCognitoIdentity.GetCredentialsForIdentity',
-    },
-    body,
-  })
-  const data = await res.json()
-  console.log(`GetCredentialsForIdentity response (key=${loginsKey}): ${JSON.stringify(data).slice(0, 200)}`)
-  if (!data?.Credentials?.AccessKeyId) throw new Error(`[${loginsKey}] ${JSON.stringify(data).slice(0, 120)}`)
-  return {
-    accessKeyId: data.Credentials.AccessKeyId as string,
-    secretAccessKey: data.Credentials.SecretKey as string,
-    sessionToken: data.Credentials.SessionToken as string,
-  }
 }
 
 async function getAWSCreds(identityId: string, token: string, gigyaJwt: string): Promise<AWSCreds> {
-  // Try Enhanced Flow: Gigya as OIDC provider (most likely for FCA)
-  try {
-    return await cognitoGetCreds(identityId, 'accounts.us1.gigya.com', gigyaJwt)
-  } catch (e1) {
-    console.log(`Enhanced Flow (Gigya) failed: ${e1}`)
+  const pairs: [string, string][] = [
+    ['accounts.us1.gigya.com', gigyaJwt],
+    ['cognito-identity.amazonaws.com', token],
+  ]
+  // Try HTTP/1.1 (preserves header case)
+  for (const [key, val] of pairs) {
+    try { return await cognitoGetCredsHttp1(identityId, key, val) }
+    catch (e) { console.log(`h1-${key.split('.')[0]}: ${e}`) }
   }
-  // Fallback: Basic Flow with developer-authenticated token
-  return await cognitoGetCreds(identityId, 'cognito-identity.amazonaws.com', token)
+  // Fallback HTTP/2 via fetch
+  const region = identityId.trim().split(':')[0] || AWS_REGION
+  const url = `https://cognito-identity.${region}.amazonaws.com/`
+  for (const [key, val] of pairs) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-amz-json-1.1', 'X-Amz-Target': 'AmazonCognitoIdentity.GetCredentialsForIdentity' },
+      body: JSON.stringify({ IdentityId: identityId.trim(), Logins: { [key]: val } }),
+    })
+    const d = await res.json()
+    if (d?.Credentials?.AccessKeyId) return {
+      accessKeyId: d.Credentials.AccessKeyId as string,
+      secretAccessKey: d.Credentials.SecretKey as string,
+      sessionToken: d.Credentials.SessionToken as string,
+    }
+    console.log(`fetch-${key.split('.')[0]}: ${JSON.stringify(d).slice(0, 120)}`)
+  }
+  throw new Error(`[cognito-all] UnknownOperationException persists after HTTP/1.1 and HTTP/2`)
 }
 
 async function pinAuthBearer(uid: string, pin: string, bearerToken: string): Promise<string> {
