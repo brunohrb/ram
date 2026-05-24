@@ -148,22 +148,25 @@ async function cognitoExchange(idToken: string) {
     body: JSON.stringify({ gigya_token: idToken }),
   })
   const data = await res.json()
-  console.log(`cognitoExchange keys: ${Object.keys(data).join(', ')}`)
+  console.log(`cognitoExchange full response: ${JSON.stringify(data)}`)
   if (!data.IdentityId) throw new Error(`Cognito exchange falhou: ${JSON.stringify(data)}`)
-  // If FCA already returns AWS credentials in the exchange, return them directly
-  if (data.Credentials?.AccessKeyId) {
+
+  // FCA may return credentials directly under various key shapes
+  const creds = data.Credentials ?? data.credentials ?? data.credential
+  const accessKeyId = creds?.AccessKeyId ?? creds?.accessKeyId
+  if (accessKeyId) {
     console.log('cognitoExchange: credentials included in response')
     return {
       identityId: data.IdentityId as string,
-      token: data.Token as string,
+      token: (data.Token ?? data.token ?? '') as string,
       credentials: {
-        accessKeyId: data.Credentials.AccessKeyId as string,
-        secretAccessKey: data.Credentials.SecretKey as string,
-        sessionToken: data.Credentials.SessionToken as string,
+        accessKeyId: accessKeyId as string,
+        secretAccessKey: (creds.SecretKey ?? creds.secretAccessKey ?? creds.SecretAccessKey) as string,
+        sessionToken: (creds.SessionToken ?? creds.sessionToken) as string,
       },
     }
   }
-  return { identityId: data.IdentityId as string, token: data.Token as string, credentials: undefined }
+  return { identityId: data.IdentityId as string, token: (data.Token ?? data.token ?? '') as string, credentials: undefined }
 }
 
 async function getAWSCreds(identityId: string, token: string): Promise<AWSCreds> {
