@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { db } from '../lib/supabase'
 import supabase from '../lib/supabase'
 import type { Vehicle, VehicleStatus, Page } from '../types'
-import { Lock, Unlock, Power, RefreshCw, Gauge } from 'lucide-react'
+import { Lock, Unlock, Power, RefreshCw, Gauge, WifiOff } from 'lucide-react'
 
 function FuelGauge({ level }: { level: number }) {
   const r = 54
@@ -51,6 +51,7 @@ export default function Dashboard({ onNavigate }: Props) {
   const [status, setStatus] = useState<VehicleStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [syncFailed, setSyncFailed] = useState(false)
   const [carImgOk, setCarImgOk] = useState(true)
 
   const loadFromDB = async () => {
@@ -65,9 +66,11 @@ export default function Dashboard({ onNavigate }: Props) {
 
   const refresh = async () => {
     setRefreshing(true)
+    setSyncFailed(false)
     try {
-      await supabase.functions.invoke('vehicle-sync')
-    } catch (_) { /* continua mesmo se falhar */ }
+      const { data, error } = await supabase.functions.invoke('vehicle-sync')
+      if (error || data?.error) setSyncFailed(true)
+    } catch (_) { setSyncFailed(true) }
     await loadFromDB()
     setRefreshing(false)
   }
@@ -104,6 +107,14 @@ export default function Dashboard({ onNavigate }: Props) {
       </div>
 
       <div className="px-4 space-y-4">
+        {/* Banner dados offline */}
+        {syncFailed && (
+          <div className="flex items-center gap-2 bg-yellow-950/50 border border-yellow-700/50 rounded-2xl px-3 py-2.5">
+            <WifiOff size={14} className="text-yellow-500 shrink-0" />
+            <p className="text-yellow-400 text-xs">Sem conexão com o veículo — exibindo último dado salvo</p>
+          </div>
+        )}
+
         {/* Fuel gauge */}
         <div className="bg-[#1a1a1a] rounded-2xl border border-[#2a2a2a] flex justify-center py-2">
           <FuelGauge level={status.fuel_level} />

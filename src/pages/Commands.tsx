@@ -21,6 +21,7 @@ export default function Commands() {
   const [executing, setExecuting] = useState<string | null>(null)
   const [confirmStart, setConfirmStart] = useState(false)
   const [lastError, setLastError] = useState<string | null>(null)
+  const [planExpired, setPlanExpired] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -111,7 +112,9 @@ export default function Commands() {
 
       if (error || !data?.success) {
         const msg = data?.error ?? error?.message ?? 'Erro desconhecido'
-        setLastError(msg)
+        const isPlanError = /subscription|plan|service|plano|assinatura/i.test(msg)
+        if (isPlanError) setPlanExpired(true)
+        else setLastError(msg)
         await db.from('commands_log').insert({ vehicle_id: vehicle.id, command, status: 'failed' })
         return
       }
@@ -179,6 +182,18 @@ export default function Commands() {
         <h1 className="text-2xl font-bold mt-0.5">Comandos</h1>
         <p className="text-gray-400 text-sm">{vehicle.model}</p>
       </div>
+
+      {/* Plano expirado */}
+      {planExpired && (
+        <div className="flex items-start gap-3 bg-yellow-950/50 border border-yellow-700/60 rounded-2xl p-3">
+          <WifiOff size={16} className="text-yellow-400 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-yellow-400 text-xs font-semibold">Plano Ram Connect inativo</p>
+            <p className="text-gray-400 text-xs mt-0.5">Os comandos remotos precisam de um plano ativo. Reative o plano no app MyRam para usar esta função.</p>
+          </div>
+          <button onClick={() => setPlanExpired(false)} className="text-gray-600 text-xs">✕</button>
+        </div>
+      )}
 
       {/* Erro do Edge Function */}
       {lastError && (
