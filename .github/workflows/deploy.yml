@@ -28,6 +28,17 @@ jobs:
 
       - run: npm run build
 
+      - name: Install rafa dependencies
+        run: npm ci
+        working-directory: rafa
+
+      - name: Build rafa app
+        run: npm run build
+        working-directory: rafa
+
+      - name: Merge rafa into dist
+        run: cp -r rafa/dist dist/rafa
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
