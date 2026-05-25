@@ -65,7 +65,7 @@ export default function Login({ onLogin }: Props) {
             <circle cx="24" cy="20" r="3" fill="white" />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-white">Jeep Connect</h1>
+        <h1 className="text-2xl font-bold text-white">Jeep do Rafa</h1>
         <p className="text-gray-500 text-sm mt-1">Entre com sua conta Jeep</p>
       </div>
 
@@ -131,7 +131,7 @@ export default function Login({ onLogin }: Props) {
       </form>
 
       <p className="text-gray-700 text-xs mt-8 text-center">
-        Use o mesmo e-mail, senha e PIN do app Jeep Connect
+        Use o mesmo e-mail, senha e PIN do app Jeep do Rafa
       </p>
     </div>
   )

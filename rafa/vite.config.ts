@@ -11,8 +11,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'Jeep Connect',
-        short_name: 'Jeep',
+        name: 'Jeep do Rafa',
+        short_name: 'Rafa',
         description: 'Controle remoto do seu Jeep Commander',
         theme_color: '#0d0d0d',
         background_color: '#0d0d0d',

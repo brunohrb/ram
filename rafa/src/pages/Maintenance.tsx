@@ -35,7 +35,7 @@ export default function Maintenance() {
   return (
     <div className="px-4 pt-4 pb-8 space-y-4">
       <div>
-        <p className="text-gray-500 text-xs font-semibold uppercase tracking-widest">Jeep Connect</p>
+        <p className="text-gray-500 text-xs font-semibold uppercase tracking-widest">Jeep do Rafa</p>
         <h1 className="text-2xl font-bold mt-0.5">Manutenção</h1>
         <p className="text-gray-400 text-sm">{auth?.vehicleName ?? 'Commander'}</p>
       </div>

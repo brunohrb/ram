@@ -83,7 +83,7 @@ export default function Commands() {
   return (
     <div className="px-4 pt-4 pb-2 space-y-5">
       <div>
-        <p className="text-gray-500 text-xs font-semibold uppercase tracking-widest">Jeep Connect</p>
+        <p className="text-gray-500 text-xs font-semibold uppercase tracking-widest">Jeep do Rafa</p>
         <h1 className="text-2xl font-bold mt-0.5">Comandos</h1>
         <p className="text-gray-400 text-sm">{auth?.vehicleName ?? 'Commander'}</p>
       </div>
@@ -92,8 +92,8 @@ export default function Commands() {
         <div className="flex items-start gap-3 bg-yellow-950/50 border border-yellow-700/60 rounded-2xl p-3">
           <WifiOff size={16} className="text-yellow-400 mt-0.5 shrink-0" />
           <div className="flex-1">
-            <p className="text-yellow-400 text-xs font-semibold">Plano Jeep Connect inativo</p>
-            <p className="text-gray-400 text-xs mt-0.5">Reative o plano no app Jeep Connect para usar comandos remotos.</p>
+            <p className="text-yellow-400 text-xs font-semibold">Plano Jeep do Rafa inativo</p>
+            <p className="text-gray-400 text-xs mt-0.5">Reative o plano no app Jeep do Rafa para usar comandos remotos.</p>
           </div>
           <button onClick={() => setPlanExpired(false)} className="text-gray-600 text-xs">✕</button>
         </div>

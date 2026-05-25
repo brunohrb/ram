@@ -92,7 +92,7 @@ export default function Dashboard({ onNavigate }: Props) {
       {/* Hero */}
       <div className="relative bg-[#111111] flex items-center justify-center" style={{ minHeight: 180 }}>
         <div className="py-10 px-6 text-center">
-          <p className="text-jeep text-xs font-semibold uppercase tracking-widest">Jeep Connect</p>
+          <p className="text-jeep text-xs font-semibold uppercase tracking-widest">Jeep do Rafa</p>
           <h1 className="text-white text-2xl font-bold mt-1">{vehicle.name}</h1>
           <p className="text-gray-500 text-sm">{vehicle.model} · {vehicle.year ?? ''}</p>
         </div>
@@ -160,7 +160,7 @@ export default function Dashboard({ onNavigate }: Props) {
         )}
 
         <div className="bg-[#1a1a1a] rounded-2xl border border-[#2a2a2a] px-4 py-3">
-          <p className="text-gray-500 text-xs font-semibold uppercase tracking-widest mb-1">Jeep Connect</p>
+          <p className="text-gray-500 text-xs font-semibold uppercase tracking-widest mb-1">Jeep do Rafa</p>
           <p className="text-white text-base font-bold leading-tight">{vehicle.name}</p>
           <p className="text-gray-400 text-sm">{vehicle.model}</p>
           {vehicle.plate && <p className="text-gray-500 text-xs font-mono mt-0.5">{vehicle.plate}</p>}
